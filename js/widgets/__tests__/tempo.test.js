@@ -31,6 +31,13 @@ window.widgetWindows = {
     windowFor: jest.fn().mockReturnValue({
         clear: jest.fn(),
         show: jest.fn(),
+        timerManager: {
+            setInterval: jest.fn().mockImplementation((cb, t) => setInterval(cb, t)),
+            clearInterval: jest.fn().mockImplementation(id => clearInterval(id)),
+            setTimeout: jest.fn().mockImplementation((cb, t) => setTimeout(cb, t)),
+            clearTimeout: jest.fn().mockImplementation(id => clearTimeout(id)),
+            clearAll: jest.fn()
+        },
         addButton: jest.fn().mockReturnValue({ onclick: () => {} }),
         addInputButton: jest.fn().mockImplementation(val => ({
             value: val,

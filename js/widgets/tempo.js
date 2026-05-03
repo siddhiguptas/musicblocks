@@ -14,7 +14,7 @@
 
 /*
    global
-   _, getDrumSynthName, Singer, TONEBPM
+   _, getDrumSynthName, Singer, TONEBPM, ManagedTimer
  */
 
 /*
@@ -57,14 +57,22 @@ class Tempo {
         this._intervals = [];
         this.isMoving = true;
         if (this._intervalID !== undefined && this._intervalID !== null) {
-            clearInterval(this._intervalID);
+            if (this.widgetWindow && this.widgetWindow.timerManager) {
+                this.widgetWindow.timerManager.clearInterval(this._intervalID);
+            } else {
+                clearInterval(this._intervalID);
+            }
         }
 
         this._intervalID = null;
         this.activity.logo.synth.loadSynth(0, getDrumSynthName(Tempo.TEMPOSYNTH));
 
         if (this._intervalID !== null) {
-            clearInterval(this._intervalID);
+            if (this.widgetWindow && this.widgetWindow.timerManager) {
+                this.widgetWindow.timerManager.clearInterval(this._intervalID);
+            } else {
+                clearInterval(this._intervalID);
+            }
         }
 
         const widgetWindow = window.widgetWindows.windowFor(this, "tempo", "tempo", true);
@@ -74,7 +82,7 @@ class Tempo {
 
         widgetWindow.onclose = () => {
             if (this._intervalID !== null) {
-                clearInterval(this._intervalID);
+                widgetWindow.timerManager.clearInterval(this._intervalID);
             }
             widgetWindow.destroy();
         };
@@ -113,7 +121,14 @@ class Tempo {
                 if (!this._get_save_lock()) {
                     this._save_lock = true;
                     this._saveTempo();
-                    setTimeout(() => (this._save_lock = false), 1000);
+                    if (this.widgetWindow && this.widgetWindow.timerManager) {
+                        this.widgetWindow.timerManager.setTimeout(
+                            () => (this._save_lock = false),
+                            1000
+                        );
+                    } else {
+                        setTimeout(() => (this._save_lock = false), 1000);
+                    }
                 }
             };
 
@@ -237,7 +252,11 @@ class Tempo {
      * @returns {void}
      */
     pause() {
-        clearInterval(this._intervalID);
+        if (this.widgetWindow && this.widgetWindow.timerManager) {
+            this.widgetWindow.timerManager.clearInterval(this._intervalID);
+        } else {
+            clearInterval(this._intervalID);
+        }
     }
 
     /**
@@ -255,12 +274,22 @@ class Tempo {
 
         // Restart the interval.
         if (this._intervalID !== null) {
-            clearInterval(this._intervalID);
+            if (this.widgetWindow && this.widgetWindow.timerManager) {
+                this.widgetWindow.timerManager.clearInterval(this._intervalID);
+            } else {
+                clearInterval(this._intervalID);
+            }
         }
 
-        this._intervalID = setInterval(() => {
-            this._draw();
-        }, Tempo.TEMPOINTERVAL);
+        if (this.widgetWindow && this.widgetWindow.timerManager) {
+            this._intervalID = this.widgetWindow.timerManager.setInterval(() => {
+                this._draw();
+            }, Tempo.TEMPOINTERVAL);
+        } else {
+            this._intervalID = setInterval(() => {
+                this._draw();
+            }, Tempo.TEMPOINTERVAL);
+        }
     }
 
     /**
@@ -421,7 +450,7 @@ class Tempo {
      * @returns {void}
      */
     __save(i) {
-        setTimeout(() => {
+        const callback = () => {
             const delta = i * 42;
             const newStack = [
                 [0, ["setbpm3", {}], 100 + delta, 100 + delta, [null, 1, 2, 5]],
@@ -432,8 +461,14 @@ class Tempo {
                 [5, ["vspace", {}], 0, 0, [0, null]]
             ];
             this.activity.blocks.loadNewBlocks(newStack);
-            this.activity.textMsg(_("New action block generated."), 3000);
-        }, 200 * i);
+            activity.textMsg(_("New action block generated."), 3000);
+        };
+
+        if (this.widgetWindow && this.widgetWindow.timerManager) {
+            this.widgetWindow.timerManager.setTimeout(callback, 200 * i);
+        } else {
+            setTimeout(callback, 200 * i);
+        }
     }
 
     /**
