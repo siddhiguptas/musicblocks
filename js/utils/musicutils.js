@@ -1597,6 +1597,34 @@ const MODE_PIE_MENUS = {
 // All of these modes assume 12 semitones per octave.
 // See http://www.pianoscales.org <== this is in no way definitive
 
+/**
+ * Scales a 12-EDO mode pattern to an arbitrary N-EDO system.
+ * Uses the Largest Remainder Method to guarantee the sum equals N.
+ * 
+ * @param {number[]} mode12 - Mode steps summing to 12 (e.g. [2,2,1,2,2,2,1])
+ * @param {number} targetN - Target EDO divisions (e.g. 19, 13, 24)
+ * @returns {number[]} Scaled mode steps summing to exactly targetN
+ */
+const scaleModeToEDO = (mode12, targetN) => {
+    if (targetN === 12) return mode12.slice();
+    
+    const scale = targetN / 12;
+    const rawSteps = mode12.map(s => s * scale);
+    const flooredSteps = rawSteps.map(s => Math.floor(s));
+    let deficit = targetN - flooredSteps.reduce((a, b) => a + b, 0);
+    
+    // Rank by fractional remainder, descending
+    const remainders = rawSteps.map((raw, i) => ({ index: i, remainder: raw - flooredSteps[i] }));
+    remainders.sort((a, b) => b.remainder - a.remainder);
+    
+    // Distribute deficit
+    for (let i = 0; i < deficit; i++) {
+        flooredSteps[remainders[i].index] += 1;
+    }
+    
+    return flooredSteps;
+};
+
 const PITCH_COLLECTIONS = {
     12: {
         chromatic: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
@@ -4253,6 +4281,16 @@ function getNote(
                 console.log("Cannot find " + keySignature.split(" ")[0] + ". Reverting to C");
             }
         }
+        
+        const divisions = octaveLength;
+        const wrappedIndex = ((noteArg % divisions) + divisions) % divisions;
+        
+        if (divisions !== 12) {
+            // Pass through as number for custom handling
+            // and return immediately to avoid string-specific parsing
+            return [wrappedIndex, "", 0];
+        }
+
         if (getSharpFlatPreference(keySignature) === "sharp") {
             noteArg = PITCHES2[(noteArg + kOffset) % 12];
         } else {
@@ -5883,7 +5921,23 @@ const noteToPitchOctave = note => {
  * @returns {number} The calculated frequency.
  */
 const pitchToFrequency = (pitch, octave, cents, keySignature) => {
-    // Calculate the frequency based on pitch and octave.
+    let temperamentName = "equal";
+    if (typeof globalActivity !== "undefined" && globalActivity && globalActivity.logo && globalActivity.logo.synth) {
+        temperamentName = globalActivity.logo.synth.inTemperament || "equal";
+    }
+    const t = getTemperament(temperamentName);
+    const divisions = (t && t.pitchNumber) || 12;
+
+    if (divisions !== 12 && t) {
+        let stepIndex = (typeof pitch === "number") ? pitch : Number(pitch);
+        if (!isNaN(stepIndex)) {
+            const ratio = Math.pow(2, stepIndex / divisions);
+            const c4Freq = A0 * Math.pow(TWELTHROOT2, 39); 
+            return c4Freq * ratio * Math.pow(2, octave - 4) * Math.pow(2, cents / 1200);
+        }
+    }
+
+    // Calculate the frequency based on pitch and octave for 12-EDO (or string notes).
     const pitchNumber = pitchToNumber(pitch, octave, keySignature);
 
     if (cents === 0) {
@@ -6497,6 +6551,7 @@ if (typeof module !== "undefined" && module.exports) {
         isCustomTemperament,
         getTemperamentName,
         noteToObj,
+        scaleModeToEDO,
         frequencyToPitch,
         getArticulation,
         keySignatureToMode,
