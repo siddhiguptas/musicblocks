@@ -1600,28 +1600,28 @@ const MODE_PIE_MENUS = {
 /**
  * Scales a 12-EDO mode pattern to an arbitrary N-EDO system.
  * Uses the Largest Remainder Method to guarantee the sum equals N.
- * 
+ *
  * @param {number[]} mode12 - Mode steps summing to 12 (e.g. [2,2,1,2,2,2,1])
  * @param {number} targetN - Target EDO divisions (e.g. 19, 13, 24)
  * @returns {number[]} Scaled mode steps summing to exactly targetN
  */
 const scaleModeToEDO = (mode12, targetN) => {
     if (targetN === 12) return mode12.slice();
-    
+
     const scale = targetN / 12;
     const rawSteps = mode12.map(s => s * scale);
     const flooredSteps = rawSteps.map(s => Math.floor(s));
     let deficit = targetN - flooredSteps.reduce((a, b) => a + b, 0);
-    
+
     // Rank by fractional remainder, descending
     const remainders = rawSteps.map((raw, i) => ({ index: i, remainder: raw - flooredSteps[i] }));
     remainders.sort((a, b) => b.remainder - a.remainder);
-    
+
     // Distribute deficit
     for (let i = 0; i < deficit; i++) {
         flooredSteps[remainders[i].index] += 1;
     }
-    
+
     return flooredSteps;
 };
 
@@ -2553,7 +2553,7 @@ const getIntervalRatio = name => {
  * @param {string} name - The name of the mode.
  * @returns {string} The mode numbers.
  */
-const getModeNumbers = name => {
+const getModeNumbers = (name, targetN = 12) => {
     const __convert = obj => {
         let n = 0;
         let m = "";
@@ -2571,7 +2571,7 @@ const getModeNumbers = name => {
 
     for (const mode in MUSICALMODES) {
         if (mode === name.toLowerCase()) {
-            return __convert(MUSICALMODES[mode]);
+            return __convert(scaleModeToEDO(MUSICALMODES[mode], targetN));
         }
     }
 
@@ -4281,14 +4281,17 @@ function getNote(
                 console.log("Cannot find " + keySignature.split(" ")[0] + ". Reverting to C");
             }
         }
-        
+
         const divisions = octaveLength;
-        const wrappedIndex = ((noteArg % divisions) + divisions) % divisions;
-        
+        const transposedIndex = noteArg + transpositionFloor;
+        const wrappedIndex = ((transposedIndex % divisions) + divisions) % divisions;
+        const octaveShift = Math.floor(transposedIndex / divisions);
+
         if (divisions !== 12) {
             // Pass through as number for custom handling
             // and return immediately to avoid string-specific parsing
-            return [wrappedIndex, "", 0];
+            octave = Math.min(Math.max(octave + octaveShift, 1), 10);
+            return [wrappedIndex, octave, transpositionCents];
         }
 
         if (getSharpFlatPreference(keySignature) === "sharp") {
@@ -5920,19 +5923,33 @@ const noteToPitchOctave = note => {
  * @param {string} keySignature - The key signature.
  * @returns {number} The calculated frequency.
  */
-const pitchToFrequency = (pitch, octave, cents, keySignature) => {
-    let temperamentName = "equal";
-    if (typeof globalActivity !== "undefined" && globalActivity && globalActivity.logo && globalActivity.logo.synth) {
-        temperamentName = globalActivity.logo.synth.inTemperament || "equal";
+const getActiveTemperamentName = temperament => {
+    if (temperament) {
+        return temperament;
     }
+
+    if (
+        typeof globalActivity !== "undefined" &&
+        globalActivity &&
+        globalActivity.logo &&
+        globalActivity.logo.synth
+    ) {
+        return globalActivity.logo.synth.inTemperament || "equal";
+    }
+
+    return "equal";
+};
+
+const pitchToFrequency = (pitch, octave, cents, keySignature, temperament) => {
+    const temperamentName = getActiveTemperamentName(temperament);
     const t = getTemperament(temperamentName);
     const divisions = (t && t.pitchNumber) || 12;
 
     if (divisions !== 12 && t) {
-        let stepIndex = (typeof pitch === "number") ? pitch : Number(pitch);
+        const stepIndex = typeof pitch === "number" ? pitch : Number(pitch);
         if (!isNaN(stepIndex)) {
             const ratio = Math.pow(2, stepIndex / divisions);
-            const c4Freq = A0 * Math.pow(TWELTHROOT2, 39); 
+            const c4Freq = A0 * Math.pow(TWELTHROOT2, 39);
             return c4Freq * ratio * Math.pow(2, octave - 4) * Math.pow(2, cents / 1200);
         }
     }

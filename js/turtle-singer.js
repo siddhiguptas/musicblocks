@@ -45,11 +45,14 @@
 
 const pitchToFrequencyCache = new Map();
 
-const getCachedPitchToFrequency = (pitch, octave, cents, keySignature) => {
-    const cacheKey = `${pitch}|${octave}|${cents}|${keySignature ?? ""}`;
+const getCachedPitchToFrequency = (pitch, octave, cents, keySignature, temperament) => {
+    const cacheKey = `${pitch}|${octave}|${cents}|${keySignature ?? ""}|${temperament ?? ""}`;
 
     if (!pitchToFrequencyCache.has(cacheKey)) {
-        pitchToFrequencyCache.set(cacheKey, pitchToFrequency(pitch, octave, cents, keySignature));
+        pitchToFrequencyCache.set(
+            cacheKey,
+            pitchToFrequency(pitch, octave, cents, keySignature, temperament)
+        );
     }
 
     return pitchToFrequencyCache.get(cacheKey);
@@ -1075,7 +1078,8 @@ class Singer {
                         noteObj[0],
                         noteObj[1],
                         noteObj[2],
-                        tur.singer.keySignature
+                        tur.singer.keySignature,
+                        activity.logo.synth.inTemperament
                     );
                     noteObj = frequencyToPitch(hertz * ratio);
                 }
@@ -1104,7 +1108,8 @@ class Singer {
                               noteObj[0],
                               noteObj[1],
                               cents,
-                              tur.singer.keySignature
+                              tur.singer.keySignature,
+                              activity.logo.synth.inTemperament
                           )
                 );
 
@@ -1167,7 +1172,8 @@ class Singer {
                 noteObj1[0],
                 noteObj1[1],
                 0,
-                tur.singer.keySignature
+                tur.singer.keySignature,
+                activity.logo.synth.inTemperament
             );
             for (let i = 0, len = ratioIntervals.length; i < len; i++) {
                 // Now that we have the note, we need to:
@@ -1199,7 +1205,13 @@ class Singer {
             );
             tur.singer.pitchDrumTable[noteObj1[0] + noteObj1[1]] = drumname;
         } else if (activity.logo.inPitchStaircase) {
-            const frequency = getCachedPitchToFrequency(note, octave, 0, tur.singer.keySignature);
+            const frequency = getCachedPitchToFrequency(
+                note,
+                octave,
+                0,
+                tur.singer.keySignature,
+                activity.logo.synth.inTemperament
+            );
             const noteObj1 = getNote(
                 note,
                 octave,
@@ -1307,7 +1319,8 @@ class Singer {
                               noteObj[0],
                               noteObj[1],
                               cents,
-                              tur.singer.keySignature
+                              tur.singer.keySignature,
+                              activity.logo.synth.inTemperament
                           )
                 );
 
@@ -2055,8 +2068,19 @@ class Singer {
                                 activity.errorMsg,
                                 activity.logo.synth.inTemperament
                             );
-                            // If the cents for this note != 0, then we need to convert to frequency and add in the cents
-                            if (tur.singer.noteCents[thisBlk][i] !== 0) {
+                            // Numeric notes in non-12 EDO systems are step indices, not hertz.
+                            if (
+                                typeof noteObj[0] === "number" &&
+                                getOctaveInterval(activity) !== SEMITONES
+                            ) {
+                                note = getCachedPitchToFrequency(
+                                    noteObj[0],
+                                    noteObj[1],
+                                    tur.singer.noteCents[thisBlk][i],
+                                    tur.singer.keySignature,
+                                    activity.logo.synth.inTemperament
+                                );
+                            } else if (tur.singer.noteCents[thisBlk][i] !== 0) {
                                 if (tur.singer.noteHertz[thisBlk][i] !== 0) {
                                     note = tur.singer.noteHertz[thisBlk][i];
                                 } else {
@@ -2065,7 +2089,8 @@ class Singer {
                                             noteObj[0],
                                             noteObj[1],
                                             tur.singer.noteCents[thisBlk][i],
-                                            tur.singer.keySignature
+                                            tur.singer.keySignature,
+                                            activity.logo.synth.inTemperament
                                         )
                                     );
                                 }
@@ -2078,7 +2103,11 @@ class Singer {
                             // Apply harmonic here instead of in synth.
                             const p = partials.indexOf(1);
                             if (p > 0) {
-                                note = noteToFrequency(note, tur.singer.keySignature) * (p + 1);
+                                note =
+                                    (typeof note === "number"
+                                        ? note
+                                        : noteToFrequency(note, tur.singer.keySignature)) *
+                                    (p + 1);
                             }
 
                             notes.push(note);
@@ -2172,7 +2201,8 @@ class Singer {
                         startingPitch.substring(0, startingPitch.length - 1),
                         Number(startingPitch.slice(-1)),
                         0,
-                        null
+                        null,
+                        activity.logo.synth.inTemperament
                     );
                     const pitchNumber = getTemperament(
                         activity.logo.synth.inTemperament

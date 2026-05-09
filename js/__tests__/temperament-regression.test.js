@@ -1,7 +1,7 @@
 // Mock the global translation function
-global._ = (str) => str;
-if (typeof TextEncoder === 'undefined') {
-    const { TextEncoder, TextDecoder } = require('util');
+global._ = str => str;
+if (typeof TextEncoder === "undefined") {
+    const { TextEncoder, TextDecoder } = require("util");
     global.TextEncoder = TextEncoder;
     global.TextDecoder = TextDecoder;
 }
@@ -33,7 +33,7 @@ describe("Temperament Refactor POC - Regression & Core Fixes", () => {
             const freq = musicutils.pitchToFrequency("C", 4, 0, "C major");
             expect(freq).toBeCloseTo(261.63, 1);
         });
-        
+
         test("pitchToNumber('C', 4, 'C major') returns 39", () => {
             const num = musicutils.pitchToNumber("C", 4, "C major");
             expect(num).toBe(39);
@@ -41,12 +41,16 @@ describe("Temperament Refactor POC - Regression & Core Fixes", () => {
     });
 
     describe("2. Non-12-EDO Note and Frequency Resolution", () => {
+        afterEach(() => {
+            delete global.globalActivity;
+        });
+
         test("pitchToFrequency handles numeric step indices correctly for 19-EDO", () => {
             // A quick mock since globalActivity isn't naturally here for 19-EDO in tests
             global.globalActivity = {
                 logo: { synth: { inTemperament: "equal19" } }
             };
-            
+
             // In 19 EDO, step 0 (C4) should be ~261.63
             const freq0 = musicutils.pitchToFrequency(0, 4, 0, "C major");
             expect(freq0).toBeCloseTo(261.63, 1);
@@ -54,9 +58,44 @@ describe("Temperament Refactor POC - Regression & Core Fixes", () => {
             // Step 19 should be one octave up, ~523.25
             const freq19 = musicutils.pitchToFrequency(19, 4, 0, "C major");
             expect(freq19).toBeCloseTo(261.63 * 2, 1);
-            
-            // Clean up
-            delete global.globalActivity;
+        });
+
+        test("pitchToFrequency can use an explicit non-12 temperament without global state", () => {
+            expect(musicutils.pitchToFrequency(19, 4, 0, "C major", "equal19")).toBeCloseTo(
+                261.63 * 2,
+                1
+            );
+        });
+
+        test("getNote preserves octave rollover for numeric 19-EDO pitches", () => {
+            expect(musicutils.getNote(19, 4, 0, "C major", false, null, null, "equal19")).toEqual([
+                0, 5, 0
+            ]);
+            expect(musicutils.getNote(-1, 4, 0, "C major", false, null, null, "equal19")).toEqual([
+                18, 3, 0
+            ]);
+        });
+
+        test("getNote applies numeric transposition before wrapping non-12-EDO pitches", () => {
+            expect(musicutils.getNote(0, 4, 1, "C major", false, null, null, "equal19")).toEqual([
+                1, 4, 0
+            ]);
+            expect(musicutils.getNote(18, 4, 1, "C major", false, null, null, "equal19")).toEqual([
+                0, 5, 0
+            ]);
+        });
+
+        test("getNote output feeds pitchToFrequency correctly for 19-EDO octave rollover", () => {
+            const noteObj = musicutils.getNote(19, 4, 0, "C major", false, null, null, "equal19");
+            const freq = musicutils.pitchToFrequency(
+                noteObj[0],
+                noteObj[1],
+                noteObj[2],
+                "C major",
+                "equal19"
+            );
+
+            expect(freq).toBeCloseTo(261.63 * 2, 1);
         });
     });
 
@@ -82,6 +121,11 @@ describe("Temperament Refactor POC - Regression & Core Fixes", () => {
             expect(scaled.reduce((a, b) => a + b, 0)).toBe(19);
             // Ionian in 19-EDO usually [3, 3, 2, 3, 3, 3, 2]
             expect(scaled).toEqual([3, 3, 2, 3, 3, 3, 2]);
+        });
+
+        test("getModeNumbers uses scaled mode steps when a target EDO is provided", () => {
+            expect(musicutils.getModeNumbers("major", 13)).toBe("0 3 5 6 8 10 12");
+            expect(musicutils.getModeNumbers("major", 19)).toBe("0 3 6 8 11 14 17");
         });
     });
 });
